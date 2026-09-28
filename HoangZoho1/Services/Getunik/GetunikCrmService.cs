@@ -237,6 +237,14 @@ namespace HoangZoho1.Services.GetUnik
                 using var response = await httpClient.SendAsync(request,
                            HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
+
+                if (response.StatusCode == HttpStatusCode.NoContent)
+                {
+                    apiResult.Code = ResultCode.NoContent;
+                    apiResult.Message = CommonConstants.MSG_204;
+                    return apiResult;
+                }
+
                 var stream = await response.Content.ReadAsStreamAsync();
 
                 // Convert stream to string

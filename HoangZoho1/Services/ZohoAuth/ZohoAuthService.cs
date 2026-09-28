@@ -1,17 +1,24 @@
 ﻿using HoangZoho1.Constants;
 using HoangZoho1.Models.Common;
+using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 using System;
-using System.IO;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Twilio.TwiML.Voice;
 
 namespace HoangZoho1.Services.ZohoAuth
 {
     public class ZohoAuthService : IZohoAuthService
     {
-        private readonly string DocumentPath = Path.GetDirectoryName(AppDomain.CurrentDomain.BaseDirectory) + @"\Documents";
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IMemoryCache _cache;
+
+        public ZohoAuthService(IHttpClientFactory httpClientFactory, IMemoryCache cache)
+        {
+            _httpClientFactory = httpClientFactory;
+            _cache = cache;
+        }
 
         public async Task<string> GetAccessToken(string clientName, string platformName)
         {
@@ -304,51 +311,44 @@ namespace HoangZoho1.Services.ZohoAuth
                     }
                 }
 
-                string accessTokenFile = $"{clientName}_{platformName}_access_token.txt";
-                AccessTokenModel tokenModel = null;
-                string txtFilePath = $"{DocumentPath}\\{accessTokenFile}";
-                if (!Directory.Exists(DocumentPath))
+                if (string.IsNullOrWhiteSpace(authEndpoint) ||
+                    string.IsNullOrWhiteSpace(clientId) ||
+                    string.IsNullOrWhiteSpace(clientSecret) ||
+                    string.IsNullOrWhiteSpace(refreshToken))
                 {
-                    Directory.CreateDirectory(DocumentPath);
+                    return null;
                 }
-                if (File.Exists(txtFilePath))
+
+                string cacheKey = $"zoho-access-token:{clientName}:{platformName}";
+                if (_cache.TryGetValue(cacheKey, out string cachedAccessToken))
                 {
-                    string text = File.ReadAllText(txtFilePath);
-                    if (!string.IsNullOrEmpty(text))
+                    return cachedAccessToken;
+                }
+
+                using var request = new HttpRequestMessage(HttpMethod.Post, authEndpoint)
+                {
+                    Content = new FormUrlEncodedContent(new Dictionary<string, string>
                     {
-                        tokenModel = JsonConvert.DeserializeObject<AccessTokenModel>(text);
-                        if (DateTime.UtcNow < tokenModel.ExpiredTime)
-                        {
-                            return tokenModel.AccessToken;
-                        }
-                    }
-                }
-                string grantType = "refresh_token";
-                string endpoint = $"{authEndpoint}?refresh_token={refreshToken}&client_id={clientId}&client_secret={clientSecret}&grant_type={grantType}";
-
-                var request = new HttpRequestMessage(
-                           HttpMethod.Post,
-                           endpoint);
-                using var httpClient = new HttpClient();
-                using var response = await httpClient.SendAsync(request,
-                           HttpCompletionOption.ResponseHeadersRead);
+                        ["refresh_token"] = refreshToken,
+                        ["client_id"] = clientId,
+                        ["client_secret"] = clientSecret,
+                        ["grant_type"] = "refresh_token"
+                    })
+                };
+                var httpClient = _httpClientFactory.CreateClient();
+                using var response = await httpClient.SendAsync(
+                    request, HttpCompletionOption.ResponseHeadersRead);
                 response.EnsureSuccessStatusCode();
-                var stream = await response.Content.ReadAsStreamAsync();
-
-                // Convert stream to string
-                StreamReader reader = new StreamReader(stream);
-                string responseData = reader.ReadToEnd();
+                string responseData = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonConvert.DeserializeObject<ZohoTokenResponse>(responseData);
 
-                string accessToken = responseObj.access_token;
-                if (!string.IsNullOrEmpty(accessToken))
+                string accessToken = responseObj?.access_token;
+                if (!string.IsNullOrWhiteSpace(accessToken))
                 {
-                    var accessTokenForSaving = new AccessTokenModel()
-                    {
-                        AccessToken = accessToken,
-                        ExpiredTime = DateTime.UtcNow.AddMinutes(30),
-                    };
-                    File.WriteAllText(txtFilePath, JsonConvert.SerializeObject(accessTokenForSaving));
+                    var lifetime = responseObj.expires_in > 120
+                        ? TimeSpan.FromSeconds(responseObj.expires_in - 60)
+                        : TimeSpan.FromMinutes(30);
+                    _cache.Set(cacheKey, accessToken, lifetime);
                 }
                 return accessToken;
             }

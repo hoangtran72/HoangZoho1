@@ -124,6 +124,7 @@ namespace HoangZoho1
 
             // Add this line
             services.AddHttpClient();
+            services.AddMemoryCache();
 
             services.AddScoped<ITwilioService, TwilioService>();
             services.AddScoped<IZohoAuthService, ZohoAuthService>();

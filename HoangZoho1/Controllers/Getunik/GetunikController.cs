@@ -230,6 +230,8 @@ namespace HoangZoho1.Controllers.GetUnik
                 {
                     case ResultCode.OK:
                         return Ok(apiResult);
+                    case ResultCode.NoContent:
+                        return NoContent();
                     default:
                         return BadRequest(apiResult);
                 }
