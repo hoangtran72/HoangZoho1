@@ -285,6 +285,8 @@ namespace HoangZoho1
             #region Localing Tours Services
 
             services.AddScoped<ILocalingToursCustomService, LocalingToursCustomService>();
+            services.AddScoped<ILocalingCrmService, LocalingCrmService>();
+            services.AddScoped<ILocalingWorkDriveService, LocalingWorkDriveService>();
 
             #endregion
 

@@ -19,6 +19,10 @@ namespace HoangZoho1.Services.LocalingTours
 
         public Task<string> UploadS3Async(IFormFile file);
 
+        public Task<ApiResultDto<string>> UploadPostTourImagesToS3(string drChipsId);
+
+        public Task<ApiResultDto<string>> UploadImageToWorkDrive(string folderId, IFormFile file);
+
     }
 
 }

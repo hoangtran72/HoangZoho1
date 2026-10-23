@@ -20,7 +20,7 @@ namespace HoangZoho1.Services.ZohoAuth
             _cache = cache;
         }
 
-        public async Task<string> GetAccessToken(string clientName, string platformName)
+        public async Task<string> GetAccessToken(string clientName, string platformName, bool forceRefresh = false)
         {
             try
             {
@@ -300,6 +300,20 @@ namespace HoangZoho1.Services.ZohoAuth
                         refreshToken = MetroManhattanConstants.ZohoCRM_RefreshToken;
                     }
                 }
+                else if (clientName.Equals("LocalingTours", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    authEndpoint = LocalingToursConstants.Zoho_AuthEndpoint;
+                    clientId = LocalingToursConstants.Zoho_ClientId;
+                    clientSecret = LocalingToursConstants.Zoho_ClientSecret;
+                    if (platformName == CommonConstants.ZohoCRM)
+                    {
+                        refreshToken = LocalingToursConstants.ZohoCrm_RefreshToken;
+                    }
+                    else if (platformName == CommonConstants.ZohoWorkDrive)
+                    {
+                        refreshToken = LocalingToursConstants.ZohoWorkDrive_RefreshToken;
+                    }
+                }
                 else if (clientName.Equals(GGInsuranceConstants.GGInsurance))
                 {
                     authEndpoint = GGInsuranceConstants.ZohoAuthEndpoint;
@@ -320,7 +334,7 @@ namespace HoangZoho1.Services.ZohoAuth
                 }
 
                 string cacheKey = $"zoho-access-token:{clientName}:{platformName}";
-                if (_cache.TryGetValue(cacheKey, out string cachedAccessToken))
+                if (!forceRefresh && _cache.TryGetValue(cacheKey, out string cachedAccessToken))
                 {
                     return cachedAccessToken;
                 }
@@ -341,6 +355,18 @@ namespace HoangZoho1.Services.ZohoAuth
                 response.EnsureSuccessStatusCode();
                 string responseData = await response.Content.ReadAsStringAsync();
                 var responseObj = JsonConvert.DeserializeObject<ZohoTokenResponse>(responseData);
+
+                if (clientName.Equals("LocalingTours", StringComparison.InvariantCultureIgnoreCase) &&
+                    platformName == CommonConstants.ZohoWorkDrive)
+                {
+                    var tokenSource = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                        "LOCALINGTOURS_ZOHO_WORKDRIVE_REFRESH_TOKEN"))
+                        ? "bundled fallback refresh token"
+                        : "LOCALINGTOURS_ZOHO_WORKDRIVE_REFRESH_TOKEN environment setting";
+                    Console.WriteLine($"Localing Tours WorkDrive token refreshed; source={tokenSource}; " +
+                        $"api_domain={responseObj?.api_domain ?? "not returned"}; " +
+                        $"scope={responseObj?.scope ?? "not returned by Zoho refresh response"}.");
+                }
 
                 string accessToken = responseObj?.access_token;
                 if (!string.IsNullOrWhiteSpace(accessToken))

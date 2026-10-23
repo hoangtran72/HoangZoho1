@@ -75,7 +75,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "Publishing a clean Release build..."
-DOTNET_CLI_HOME="${TMPDIR:-/tmp}/hoangzoho-dotnet" \
 DOTNET_NOLOGO=1 \
 DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
 dotnet publish "$project_file" \
@@ -132,9 +131,9 @@ fi
 
 echo "Taking the application offline for file replacement..."
 printf '%s\n' 'Deployment in progress. Please try again shortly.' >"$offline_file"
+offline_active=true
 curl --fail --silent --show-error --user "$ftp_user:$ftp_password" \
   --ssl-reqd --upload-file "$offline_file" "$ftp_base/app_offline.htm" >/dev/null
-offline_active=true
 
 file_total="$(find "$publish_dir" -type f ! -name app_offline.htm | wc -l | tr -d ' ')"
 file_number=0

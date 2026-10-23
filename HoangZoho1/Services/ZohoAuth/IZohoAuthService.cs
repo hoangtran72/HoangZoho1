@@ -7,6 +7,6 @@ namespace HoangZoho1.Services.ZohoAuth
 {
     public interface IZohoAuthService
     {
-        Task<string> GetAccessToken(string clientName, string platformName);
+        Task<string> GetAccessToken(string clientName, string platformName, bool forceRefresh = false);
     }
 }

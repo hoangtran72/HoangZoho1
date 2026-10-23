@@ -19,9 +19,10 @@
     "HoangZoho1": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "weatherforecast",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ALLOW_LOCAL_SECRET_FALLBACK": "true",
+        "LOCAL_SECRET_FILE_PATH": "../.env.azure.local"
       },
       "applicationUrl": "https://localhost:5001;http://localhost:5000"
     }

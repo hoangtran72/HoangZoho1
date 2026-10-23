@@ -16,5 +16,7 @@ namespace HoangZoho1.Models.Common
 
         public int expires_in { get; set; }
 
+        public string scope { get; set; }
+
     }
 }

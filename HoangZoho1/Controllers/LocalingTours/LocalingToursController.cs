@@ -176,6 +176,22 @@ namespace HoangZoho1.Controllers.LocalingTours
             });
         }
 
+        [HttpPost("workdrive/{folderId}/upload")]
+        public async Task<IActionResult> UploadToWorkDrive(string folderId)
+        {
+            var file = Request.Form.Files.FirstOrDefault();
+            if (file == null) return BadRequest("No file.");
+            var result = await _localingToursCustomService.UploadImageToWorkDrive(folderId, file);
+            return result.Code == ResultCode.OK ? Ok(new { success = true, response = result.Data }) : BadRequest(result);
+        }
+
+        [HttpPost("dr-chips/{drChipsId}/upload-post-tour-images")]
+        public async Task<IActionResult> UploadPostTourImages(string drChipsId)
+        {
+            var result = await _localingToursCustomService.UploadPostTourImagesToS3(drChipsId);
+            return result.Code == ResultCode.OK ? Ok(new { success = true, result.Data }) : BadRequest(result);
+        }
+
     }
 
 }
