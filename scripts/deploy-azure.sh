@@ -4,8 +4,9 @@ set -Eeuo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_file="$repo_root/HoangZoho1/HoangZoho1.csproj"
 publish_settings="${1:-$HOME/Downloads/HoangZoho1.PublishSettings}"
+fallback_file="$repo_root/.env.azure.local"
 
-for dependency in curl dotnet jq xmllint; do
+for dependency in curl dotnet jq perl xmllint; do
   if ! command -v "$dependency" >/dev/null 2>&1; then
     echo "Missing required command: $dependency" >&2
     exit 1
@@ -14,6 +15,11 @@ done
 
 if [[ ! -f "$publish_settings" ]]; then
   echo "Publish settings not found: $publish_settings" >&2
+  exit 1
+fi
+
+if [[ ! -f "$fallback_file" ]]; then
+  echo "Secret fallback file not found: $fallback_file" >&2
   exit 1
 fi
 
@@ -74,6 +80,30 @@ dotnet publish "$project_file" \
   --configuration Release \
   --no-self-contained \
   --output "$publish_dir"
+
+web_config="$publish_dir/web.config"
+if [[ ! -f "$web_config" ]]; then
+  echo "Published web.config was not found." >&2
+  exit 1
+fi
+
+# Keep the fallback outside wwwroot; the app reads it from App Service's private
+# D:\home\data directory. These settings enable the existing fallback loader.
+perl -0pi -e 's{(<aspNetCore\b[^>]*)(\s*/>)}{$1><environmentVariables><environmentVariable name="ALLOW_LOCAL_SECRET_FALLBACK" value="true" /><environmentVariable name="LOCAL_SECRET_FILE_PATH" value="D:\\home\\data\\.env.azure.local" /></environmentVariables></aspNetCore>}' "$web_config"
+xmllint --noout "$web_config"
+if ! grep -q 'name="LOCAL_SECRET_FILE_PATH"' "$web_config"; then
+  echo "Could not configure the secret fallback path in web.config." >&2
+  exit 1
+fi
+
+if find "$publish_dir" -type f -name '.env.azure.local' -print -quit | grep -q .; then
+  echo "Refusing to deploy: the secret fallback file appeared in the publish output." >&2
+  exit 1
+fi
+
+echo "Uploading the secret fallback to App Service private data storage..."
+curl --fail --silent --show-error --user "$zip_user:$zip_password" \
+  --upload-file "$fallback_file" "$kudu_url/api/vfs/data/.env.azure.local" >/dev/null
 
 echo "Taking the application offline for file replacement..."
 printf '%s\n' 'Deployment in progress. Please try again shortly.' >"$offline_file"

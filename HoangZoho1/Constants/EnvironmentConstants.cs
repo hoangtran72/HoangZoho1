@@ -15,10 +15,12 @@ namespace HoangZoho1.Constants
                 .ToArray();
 
             var fallbackUsed = false;
-            if (missing.Length > 0 && string.Equals(
+            var allowLocalFallback = string.Equals(
                 Environment.GetEnvironmentVariable("ALLOW_LOCAL_SECRET_FALLBACK"),
                 "true",
-                StringComparison.OrdinalIgnoreCase))
+                StringComparison.OrdinalIgnoreCase);
+
+            if (missing.Length > 0 && allowLocalFallback)
             {
                 var configuredPath = Environment.GetEnvironmentVariable("LOCAL_SECRET_FILE_PATH");
                 var fallbackPath = string.IsNullOrWhiteSpace(configuredPath)
@@ -32,7 +34,9 @@ namespace HoangZoho1.Constants
                     .ToArray();
             }
 
-            if (missing.Length > 0)
+            // Azure integrations may be independently configured and unused;
+            // fail only when a feature requests one of its missing values.
+            if (allowLocalFallback && missing.Length > 0)
             {
                 throw new InvalidOperationException(
                     "Missing required environment variables: " + string.Join(", ", missing));
