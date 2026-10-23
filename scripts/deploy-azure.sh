@@ -4,10 +4,8 @@ set -Eeuo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_file="$repo_root/HoangZoho1/HoangZoho1.csproj"
 publish_settings="${1:-$HOME/Downloads/HoangZoho1.PublishSettings}"
-secret_file="${2:-$repo_root/.env.azure.local}"
-remote_secret_path='D:\home\data\HoangZoho1\.env.azure.local'
 
-for dependency in curl dotnet jq python3 xmllint; do
+for dependency in curl dotnet jq xmllint; do
   if ! command -v "$dependency" >/dev/null 2>&1; then
     echo "Missing required command: $dependency" >&2
     exit 1
@@ -16,11 +14,6 @@ done
 
 if [[ ! -f "$publish_settings" ]]; then
   echo "Publish settings not found: $publish_settings" >&2
-  exit 1
-fi
-
-if [[ ! -f "$secret_file" ]]; then
-  echo "Secret fallback file not found: $secret_file" >&2
   exit 1
 fi
 
@@ -81,53 +74,6 @@ dotnet publish "$project_file" \
   --configuration Release \
   --no-self-contained \
   --output "$publish_dir"
-
-python3 - "$publish_dir/web.config" "$remote_secret_path" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-
-path, secret_path = sys.argv[1:]
-tree = ET.parse(path)
-root = tree.getroot()
-aspnet_core = root.find(".//aspNetCore")
-if aspnet_core is None:
-    raise SystemExit("Generated web.config does not contain aspNetCore configuration")
-
-environment = aspnet_core.find("environmentVariables")
-if environment is None:
-    environment = ET.SubElement(aspnet_core, "environmentVariables")
-
-settings = {
-    "ALLOW_LOCAL_SECRET_FALLBACK": "true",
-    "LOCAL_SECRET_FILE_PATH": secret_path,
-}
-for element in list(environment):
-    if element.get("name") in settings:
-        environment.remove(element)
-for name, value in settings.items():
-    ET.SubElement(environment, "environmentVariable", name=name, value=value)
-
-ET.indent(tree, space="  ")
-tree.write(path, encoding="utf-8", xml_declaration=True)
-PY
-
-echo "Uploading the protected fallback file outside wwwroot..."
-mkdir_request="$(jq -n \
-  --arg command 'powershell -NoProfile -Command "New-Item -ItemType Directory -Force D:\home\data\HoangZoho1 | Out-Null"' \
-  --arg dir 'D:\home\data' \
-  '{command:$command,dir:$dir}')"
-curl --fail --silent --show-error --user "$zip_user:$zip_password" \
-  -H 'Content-Type: application/json' \
-  -d "$mkdir_request" "$kudu_url/api/command" >/dev/null
-
-secret_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-  --user "$zip_user:$zip_password" \
-  -X PUT -H 'If-Match: *' --upload-file "$secret_file" \
-  "$kudu_url/api/vfs/data/HoangZoho1/.env.azure.local")"
-if [[ "$secret_status" != 200 && "$secret_status" != 201 && "$secret_status" != 204 ]]; then
-  echo "Secret upload failed with HTTP $secret_status" >&2
-  exit 1
-fi
 
 echo "Taking the application offline for file replacement..."
 printf '%s\n' 'Deployment in progress. Please try again shortly.' >"$offline_file"
