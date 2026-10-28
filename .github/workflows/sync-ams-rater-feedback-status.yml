@@ -1,0 +1,74 @@
+name: Sync AMS Rater feedback status to Google Sheets
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: GitHub issue number to sync now
+        required: true
+        type: string
+
+permissions:
+  issues: read
+
+concurrency:
+  group: feedback-status-${{ github.event.issue.node_id }}
+  cancel-in-progress: true
+
+jobs:
+  sync-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Update the matching Google Sheet checkbox
+        env:
+          SHEETS_WEB_APP_URL: ${{ vars.AMS_RATER_SHEETS_WEB_APP_URL }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_STATE: ${{ github.event.issue.state }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [[ -z "$SHEETS_WEB_APP_URL" ]]; then
+            echo "Repository variable AMS_RATER_SHEETS_WEB_APP_URL is not set."
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            issue="$(gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER")"
+            ISSUE_URL="$(printf '%s' "$issue" | jq -r '.html_url')"
+            ISSUE_STATE="$(printf '%s' "$issue" | jq -r '.state')"
+            ISSUE_BODY="$(printf '%s' "$issue" | jq -r '.body // ""')"
+          fi
+
+          payload="$(jq -cn \
+            --arg action "sync_github_status" \
+            --arg issueNumber "$ISSUE_NUMBER" \
+            --arg issueUrl "$ISSUE_URL" \
+            --arg state "$ISSUE_STATE" \
+            --arg issueBody "$ISSUE_BODY" \
+            '{action:$action,issueNumber:$issueNumber,issueUrl:$issueUrl,state:$state,issueBody:$issueBody}')"
+
+          # The issue-created event can arrive before Zoho writes the issue URL
+          # into the new Sheet row. Retry briefly until that row is available.
+          for attempt in {1..8}; do
+            if response="$(curl --location --fail-with-body --silent --show-error \
+              --max-time 12 \
+              --header 'Content-Type: application/json' \
+              --data-binary "$payload" \
+              "$SHEETS_WEB_APP_URL")"; then
+              if printf '%s' "$response" | grep -Fq '"success":true'; then
+                echo "Google Sheet status synced: issue #$ISSUE_NUMBER is $ISSUE_STATE."
+                exit 0
+              fi
+            fi
+            echo "Sync attempt $attempt did not confirm success; retrying."
+            sleep 2
+          done
+
+          echo "Could not sync status for GitHub issue #$ISSUE_NUMBER after 8 attempts."
+          exit 1
